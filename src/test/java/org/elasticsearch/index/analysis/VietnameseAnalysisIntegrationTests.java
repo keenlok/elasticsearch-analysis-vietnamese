@@ -21,13 +21,16 @@ import java.util.concurrent.ExecutionException;
 
 import static org.elasticsearch.test.ESIntegTestCase.Scope.TEST;
 import static org.elasticsearch.xcontent.XContentFactory.jsonBuilder;
+import static org.elasticsearch.index.query.QueryBuilders.matchQuery;
+import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertHitCount;
+
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 
 /**
  * Created by duydo on 2/20/17.
  */
-@ClusterScope(supportsDedicatedMasters=false, numDataNodes=1, numClientNodes=0)
+@ClusterScope(supportsDedicatedMasters = false, numDataNodes = 1, numClientNodes = 0)
 public class VietnameseAnalysisIntegrationTests extends ESIntegTestCase {
     @Override
     protected Collection<Class<? extends Plugin>> nodePlugins() {
@@ -35,7 +38,7 @@ public class VietnameseAnalysisIntegrationTests extends ESIntegTestCase {
     }
 
     public void testPluginIsLoaded() throws Exception {
-        NodesInfoResponse response = client().admin().cluster().prepareNodesInfo().get();
+        NodesInfoResponse response = clusterAdmin().prepareNodesInfo().get();
         for (NodeInfo nodeInfo : response.getNodes()) {
             boolean pluginFound = false;
             for (PluginRuntimeInfo pluginInfo : nodeInfo.getInfo(PluginsAndModules.class).getPluginInfos()) {
@@ -49,8 +52,7 @@ public class VietnameseAnalysisIntegrationTests extends ESIntegTestCase {
     }
 
     public void testVietnameseAnalyzer() throws ExecutionException, InterruptedException {
-
-        AnalyzeAction.Response response = client().admin().indices()
+        AnalyzeAction.Response response = indicesAdmin()
                 .prepareAnalyze("công nghệ thông tin Việt Nam").setAnalyzer("vi_analyzer")
                 .execute().get();
         String[] expected = {"công nghệ", "thông tin", "việt nam"};
@@ -64,7 +66,7 @@ public class VietnameseAnalysisIntegrationTests extends ESIntegTestCase {
     public void testVietnameseAnalyzerInMapping() throws ExecutionException, InterruptedException, IOException {
         createIndex("test");
         ensureGreen("test");
-        final XContentBuilder mapping = jsonBuilder()
+        indicesAdmin().preparePutMapping("test").setSource(jsonBuilder()
                 .startObject()
                 .startObject("_doc")
                 .startObject("properties")
@@ -74,18 +76,15 @@ public class VietnameseAnalysisIntegrationTests extends ESIntegTestCase {
                 .endObject()
                 .endObject()
                 .endObject()
-                .endObject();
-        client().admin().indices().preparePutMapping("test").setSource(mapping).get();
-        final XContentBuilder source = jsonBuilder()
+                .endObject()
+        ).get();
+
+        index("test", "1", jsonBuilder()
                 .startObject()
                 .field("foo", "công nghệ thông tin Việt Nam")
-                .endObject();
-        index("test", "1", source);
+                .endObject());
         refresh();
-        SearchResponse response = client().prepareSearch("test").
-                setQuery(
-                        QueryBuilders.matchQuery("foo", "công nghệ thông tin")
-                ).execute().actionGet();
-        assertThat(response.getHits().getTotalHits().toString(), is("1 hits"));
+
+        assertHitCount(prepareSearch("test").setQuery(matchQuery("foo", "công nghệ thông tin")), 1);
     }
 }
